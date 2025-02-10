@@ -1,0 +1,22 @@
+{
+  "name": "figma-comment-summarizer",
+  "version": "1.0.0",
+  "description": "A Figma plugin to summarize comments",
+  "main": "code.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc code.ts --target ES2017 --module ES2015 --skipLibCheck",
+    "start": "node server.js"
+  },
+  "devDependencies": {
+    "@figma/plugin-typings": "^1.82.0",
+    "typescript": "^5.7.3"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "express": "^4.21.2"
+  }
+}

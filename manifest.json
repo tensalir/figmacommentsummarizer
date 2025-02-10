@@ -1,0 +1,22 @@
+{
+  "name": "Comment Summarizer",
+  "id": "1324123859733067669",
+  "api": "1.0.0",
+  "main": "code.js",
+  "ui": "ui.html",
+  "capabilities": [],
+  "enableProposedApi": false,
+  "editorType": ["figma", "figjam"],
+  "networkAccess": {
+    "allowedDomains": [
+      "https://api.anthropic.com",
+      "https://api.figma.com"
+    ],
+    "devAllowedDomains": [
+      "http://localhost:3000"
+    ]
+  },
+  "permissions": [
+    "currentuser"
+  ]
+}
