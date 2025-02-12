@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            font-family: Inter, sans-serif;
+            padding: 20px;
+            max-width: 400px;
+        }
+        #summary {
+            margin: 16px 0;
+            padding: 12px;
+            border: 1px solid #e5e5e5;
+            border-radius: 6px;
+            min-height: 100px;
+            white-space: pre-wrap;
+        }
+        button {
+            width: 100%;
+            padding: 8px 16px;
+            background: #18A0FB;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #CCCCCC;
+            cursor: not-allowed;
+        }
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .error-message {
+            padding: 12px;
+            border: 1px solid #ffcdd2;
+            border-radius: 6px;
+            background: #ffebee;
+            margin: 16px 0;
+        }
+    </style>
+</head>
+<body>
+    <button id="analyzeBtn">Summarize Comments</button>
+    <div class="loading" id="loadingIndicator">Analyzing comments...</div>
+    <div id="summary"></div>
+    <div id="error" class="error-message" style="display: none; color: red; margin: 16px 0;"></div>
+
+    <script>
+        const DEBUG = true;
+
+        function debugLog(...args) {
+            if (DEBUG) {
+                console.log('[Plugin Debug]', ...args);
+            }
+        }
+
+        function debugError(...args) {
+            if (DEBUG) {
+                console.error('[Plugin Error]', ...args);
+            }
+        }
+
+        document.getElementById('analyzeBtn').onclick = () => {
+            const button = document.getElementById('analyzeBtn');
+            const loading = document.getElementById('loadingIndicator');
+            const summary = document.getElementById('summary');
+            
+            button.disabled = true;
+            loading.style.display = 'block';
+            summary.textContent = '';
+            
+            parent.postMessage({ pluginMessage: { type: 'analyze-comments' } }, '*');
+        }
+
+        onmessage = (event) => {
+            const msg = event.data.pluginMessage;
+            const button = document.getElementById('analyzeBtn');
+            const loading = document.getElementById('loadingIndicator');
+            const summary = document.getElementById('summary');
+            
+            if (msg.type === 'oauth-start') {
+                // Store code verifier from the original request
+                const codeVerifier = msg.codeVerifier;
+                const state = msg.state;
+                console.log('Starting OAuth flow:', { state, hasCodeVerifier: !!codeVerifier });
+                
+                // Store these in window for verification later
+                window._oauthState = state;
+                window._codeVerifier = codeVerifier;
+                
+                const urlWithVerifier = `${msg.url}&code_verifier=${encodeURIComponent(codeVerifier)}`;
+                console.log('OAuth URL (without verifier):', msg.url);
+                
+                // Open OAuth window with error handling
+                let oauthWindow;
+                try {
+                    oauthWindow = window.open(urlWithVerifier, 'Figma OAuth', 
+                        'width=800,height=600,menubar=no,toolbar=no,location=no');
+                    
+                    if (!oauthWindow) {
+                        throw new Error('Popup blocked - please allow popups for this site');
+                    }
+                } catch (error) {
+                    console.error('Failed to open OAuth window:', error);
+                    parent.postMessage({ 
+                        pluginMessage: { 
+                            type: 'error',
+                            error: 'Failed to open authorization window: ' + error.message 
+                        } 
+                    }, '*');
+                    return;
+                }
+                
+                // Listen for OAuth callback with timeout
+                const timeoutId = setTimeout(() => {
+                    console.warn('OAuth timeout - no response received');
+                    if (oauthWindow) {
+                        oauthWindow.close();
+                    }
+                    parent.postMessage({ 
+                        pluginMessage: { 
+                            type: 'error',
+                            error: 'Authorization timed out - please try again'
+                        } 
+                    }, '*');
+                }, 300000); // 5 minute timeout
+                
+                window.addEventListener('message', function oauthHandler(event) {
+                    console.log('Received postMessage:', {
+                        type: event.data.type,
+                        origin: event.origin,
+                        hasAccessToken: !!event.data.access_token,
+                        hasError: !!event.data.error
+                    });
+                    
+                    // Validate origin
+                    if (!event.origin.match(/^https?:\/\/(www\.)?figma\.com$/)) {
+                        console.warn('Received message from unexpected origin:', event.origin);
+                        return;
+                    }
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (event.data.type === 'oauth-callback') {
+                        // Validate state to prevent CSRF
+                        if (event.data.state !== window._oauthState) {
+                            console.error('State mismatch:', {
+                                received: event.data.state,
+                                expected: window._oauthState
+                            });
+                            parent.postMessage({ 
+                                pluginMessage: { 
+                                    type: 'error',
+                                    error: 'Security validation failed'
+                                } 
+                            }, '*');
+                            return;
+                        }
+                        
+                        console.log('OAuth callback successful');
+                        parent.postMessage({ 
+                            pluginMessage: { 
+                                type: 'oauth-callback',
+                                access_token: event.data.access_token,
+                                code_verifier: window._codeVerifier,
+                                state: window._oauthState
+                            } 
+                        }, '*');
+                    } else if (event.data.type === 'oauth-error') {
+                        console.error('OAuth error received:', event.data.error);
+                        parent.postMessage({ 
+                            pluginMessage: { 
+                                type: 'error',
+                                error: event.data.error
+                            } 
+                        }, '*');
+                    }
+                    
+                    // Cleanup
+                    window.removeEventListener('message', oauthHandler);
+                    delete window._oauthState;
+                    delete window._codeVerifier;
+                    
+                    if (oauthWindow) {
+                        oauthWindow.close();
+                    }
+                }, false);
+            } else if (msg.type === 'summary') {
+                summary.textContent = msg.summary;
+                button.disabled = false;
+                loading.style.display = 'none';
+            } else if (msg.type === 'error') {
+                const errorDiv = document.getElementById('error');
+                summary.textContent = '';
+                errorDiv.textContent = `Error: ${msg.error}`;
+                errorDiv.style.display = 'block';
+                button.disabled = false;
+                loading.style.display = 'none';
+                
+                // Auto-hide error after 10 seconds
+                setTimeout(() => {
+                    errorDiv.style.display = 'none';
+                }, 10000);
+            }
+        }
+    </script>
+</body>
+</html> 

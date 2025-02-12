@@ -1,0 +1,15 @@
+{
+  "name": "figma-comment-analyzer",
+  "version": "1.0.0",
+  "description": "Figma Comment Analyzer Plugin",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.17.1",
+    "node-fetch": "^2.6.1"
+  }
+}
